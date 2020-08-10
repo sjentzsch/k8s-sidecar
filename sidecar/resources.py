@@ -64,10 +64,12 @@ def listResources(label, labelValue, targetFolder, url, method, payload,
     # Filter resources based on label and value or just label
     labelSelector=f"{label}={labelValue}" if labelValue else label
 
+    print(f"{timestamp()} Fetching data ...")
     if namespace == "ALL":
         ret = getattr(v1, _list_for_all_namespaces[resource])(label_selector=labelSelector)
     else:
         ret = getattr(v1, _list_namespaced[resource])(namespace=namespace, label_selector=labelSelector)
+    print(f"{timestamp()} Done fetching data.")
 
     # For all the found resources
     for sec in ret.items:
@@ -163,7 +165,18 @@ def _watch_resource_loop(mode, *args):
             # Always wait to slow down the loop in case of exceptions
             sleep(os.getenv("ERROR_THROTTLE_SLEEP", 5))
             if mode == "SLEEP":
-                listResources(*args)
+                p = Process(target=listResources, args=(args))
+                p.start()
+
+                print(f"{timestamp()} Waiting to join just started process (or 300s) ...")
+                p.join(300)
+                if p.is_alive():
+                    print(f"{timestamp()} Killing listResources thread as it exceeded 300s ...")
+                    p.terminate()
+                    p.join()
+
+                # listResources(*args)
+                print(f"{timestamp()} Sleeping ...")
                 sleep(os.getenv("SLEEP_TIME", 60))
             else:
                 _watch_resource_iterator(*args)
@@ -187,7 +200,7 @@ def watchForChanges(mode, label, labelValue, targetFolder, url, method, payload,
                         args=(mode, label, labelValue, targetFolder, url, method, payload,
                               currentNamespace, folderAnnotation, resources[0], uniqueFilenames)
                         )
-    firstProc.daemon=True
+    #firstProc.daemon=True
     firstProc.start()
 
     if len(resources) == 2:
@@ -195,7 +208,7 @@ def watchForChanges(mode, label, labelValue, targetFolder, url, method, payload,
                           args=(mode, label, labelValue, targetFolder, url, method, payload,
                                 currentNamespace, folderAnnotation, resources[1], uniqueFilenames)
                           )
-        secProc.daemon=True
+        #secProc.daemon=True
         secProc.start()
 
     while True:
